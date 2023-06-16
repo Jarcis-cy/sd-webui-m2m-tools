@@ -7,7 +7,13 @@ def replace(folder_path, old_word, new_word, global_replace):
                 with open(os.path.join(root, file), 'r') as f:
                     content = f.read().strip()
 
-                if global_replace:
+                if old_word == "":
+                    if not content.endswith(",") and not new_word.startswith(","):
+                        new_word = "," + new_word
+                    if content.endswith(",") and not new_word.startswith(","):
+                        new_word = new_word[1:]
+                    new_content = content + new_word
+                elif global_replace:
                     new_content = content.replace(old_word, new_word)
                 else:
                     words = content.split(',')

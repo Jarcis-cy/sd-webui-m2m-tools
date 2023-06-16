@@ -22,9 +22,9 @@ def on_ui_tabs():
 
                     with gr.TabItem(label='Replace Words'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
-                        old_word_input = gr.Textbox(label='Old Word', lines=1)
+                        old_word_input = gr.Textbox(label='Old Word', lines=1, placeholder="If left empty, the New Word will be added to the end of all files.")
                         new_word_input = gr.Textbox(label='New Word', lines=1)
-                        global_replace_checkbox = gr.Checkbox(label="Global Replace")  
+                        global_replace_checkbox = gr.Checkbox(label="Global Replace")
                         replace_button = gr.Button(value="Replace Words")
                         replace_output = gr.Textbox(label="Replace Status", interactive=False, visible=True, placeholder="Words replaced successfully")
                         replace_button.click(replace_words.replace, inputs=[folder_input, old_word_input, new_word_input, global_replace_checkbox], outputs=replace_output)
