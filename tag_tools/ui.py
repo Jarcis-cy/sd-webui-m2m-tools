@@ -13,12 +13,17 @@ def on_ui_tabs():
                         greater_than_checkbox = gr.Checkbox(label="Greater Than Frequency")
                         less_than_checkbox = gr.Checkbox(label="Less Than Frequency")
                         word_stats_button = gr.Button(value="Calculate Word Statistics")
-                        freq_output = gr.Textbox(label="Word Frequency", interactive=False, visible=True, placeholder="Word frequencies will be shown here")
                         search_output = gr.Textbox(label="Search Results", interactive=False, visible=True, placeholder="Search results will be shown here")
-                        delete_words_input = gr.Textbox(label='Delete Words', lines=1, placeholder="Input words to delete, separated by comma")
+                        with gr.Row():
+                            freq_output = gr.Textbox(label="Word Frequency", interactive=False, visible=True, placeholder="Word frequencies will be shown here")
+                            delete_words_input = gr.Textbox(label='Delete Words', lines=1, placeholder="Input words to delete, separated by comma")  # define delete_words_input here
+                            freq_to_delete_button = gr.Button(value="Process Frequency to Delete Words")
+                            freq_to_delete_button.click(process_frequency_to_words, inputs=freq_output, outputs=delete_words_input)
                         delete_words_button = gr.Button(value="Delete Words")
                         delete_words_button.click(delete_words.delete_ws, inputs=[folder_input, delete_words_input])
                         word_stats_button.click(process_files.process, inputs=[folder_input, frequency_input, search_input, greater_than_checkbox, less_than_checkbox], outputs=[freq_output, search_output])
+
+
 
                     with gr.TabItem(label='Replace Words'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
@@ -30,6 +35,11 @@ def on_ui_tabs():
                         replace_button.click(replace_words.replace, inputs=[folder_input, old_word_input, new_word_input, global_replace_checkbox], outputs=replace_output)
 
     return [(pro_interface, "Tag tools", "Tag tools")]
+
+def process_frequency_to_words(freq_str):
+    lines = freq_str.strip().split('\n')
+    words = [line.split(':')[0].strip().replace('"', '') for line in lines]
+    return ','.join(words)
 
 if __name__ == "__main__":
     on_ui_tabs()
