@@ -1,5 +1,6 @@
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
+from tag_tools.frame_splitter import split_frames
 
 
 def on_ui_tabs():
@@ -7,6 +8,28 @@ def on_ui_tabs():
         with gr.Row().style(equal_height=False):
             with gr.Column(variant='panel'):
                 with gr.Tabs():
+                    with gr.TabItem(label='M2M'):
+                        gr.Markdown("### Stage 1")
+                        with gr.Row(variant='panel'):
+                            project_input = gr.Textbox(label='Project Path', lines=1)
+                            movie_input = gr.Textbox(label='Movie Path', lines=1)
+                        with gr.Row(variant='panel'):
+                            aim_fps_checkbox = gr.Checkbox(label="启用输出帧率控制")
+                            aim_fps = gr.Slider(
+                                minimum=1,
+                                maximum=60,
+                                step=1,
+                                label='输出帧率',
+                                value=30, interactive=True)
+                        btn = gr.Button(value="gene_frame")
+
+                        def split_frames_with_fps_control(project_path, movie_path, fps_checkbox, fps):
+                            # If aim_fps_checkbox is True, pass aim_fps to split_frames
+                            # Otherwise, pass None to split_frames
+                            split_frames(project_path, movie_path, fps if fps_checkbox else None)
+
+                        btn.click(split_frames_with_fps_control,
+                                  inputs=[project_input, movie_input, aim_fps_checkbox, aim_fps])
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         frequency_input = gr.Slider(minimum=1, maximum=1000, step=1, label='Frequency', value=10)
