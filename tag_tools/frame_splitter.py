@@ -7,6 +7,7 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw, ImageOps
 import json
+from moviepy.editor import concatenate_videoclips, VideoFileClip, AudioFileClip
 
 
 def split_frames(project_path, movie_path, aim_fps=None):
@@ -122,7 +123,7 @@ def reconfiguration(project_path, width, movie_path, step):
     crop_info = {}
 
     # Process the files in the 'mask' directory
-    for filename in os.listdir(mask_folder):
+    for filename in tqdm(os.listdir(mask_folder)):
         if filename.endswith('.png'):
             # Load the image
             img = Image.open(f'{mask_folder}/{filename}')
@@ -165,7 +166,7 @@ def reconfiguration(project_path, width, movie_path, step):
         json.dump(crop_info, f)
 
     # Process the files in the 'frame' directory
-    for filename in os.listdir(frame_folder):
+    for filename in tqdm(os.listdir(frame_folder)):
         if filename.endswith('.png'):
             # Load the image
             img = Image.open(f'{frame_folder}/{filename}')
@@ -210,3 +211,40 @@ def calculate_white_ratio_binary(img_array, top_left, bottom_right):
     white_ratio = white_pixels / total_pixels
 
     return white_ratio
+
+
+def frames_to_video(project_path, input_folder, output_file, original_video, fps=None):
+    if len(input_folder) == 0:
+        input_folder = "video_frame"
+    if len(output_file) == 0:
+        output_file = "tmp.mp4"
+    input_folder = str(os.path.join(project_path, input_folder))
+    output_file = str(os.path.join(project_path, output_file))
+    image_files = sorted([img for img in os.listdir(input_folder) if img.endswith(".png")])
+    if not image_files:
+        raise ValueError(f"No PNG images found in the input folder: {input_folder}")
+    frame = cv2.imread(os.path.join(input_folder, image_files[0]))
+    height, width, layers = frame.shape
+
+    # 如果没有提供帧率，则从原始视频中获取
+    if fps is None:
+        original = VideoFileClip(original_video)
+        fps = original.fps
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+
+    for i in tqdm(range(len(image_files)), desc="Processing frames"):
+        video.write(cv2.imread(os.path.join(input_folder, image_files[i])))
+
+    cv2.destroyAllWindows()
+    video.release()
+
+    # 如果原始视频有音频，将其添加到新的视频文件
+    if VideoFileClip(original_video).audio:
+        videoclip = VideoFileClip(output_file)
+        audioclip = AudioFileClip(original_video)
+        videoclip = videoclip.set_audio(audioclip)
+        videoclip.write_videofile(output_file, codec='libx264')
+
+    return "Done"

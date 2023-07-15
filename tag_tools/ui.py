@@ -2,7 +2,7 @@ import os.path
 
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
-from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration
+from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration, frames_to_video
 
 
 def on_ui_tabs():
@@ -60,10 +60,39 @@ def on_ui_tabs():
                         """)
                         with gr.Row(variant='panel'):
                             step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)
-                            width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1, value=810)
+                            width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1,
+                                              value=810)
                         btn2 = gr.Button(value="reconfiguration")
                         out2 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input], outputs=out2)
+                        btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input],
+                                   outputs=out2)
+                        gr.Markdown("""
+                        ## Stage 4
+                        重新合并帧序列，将重构好的帧重新生成一个新的视频，便于ebs处理
+
+                        直接点击运行，即可参考原视频的帧率进行合成视频，生成一个tmp.mp4（可修改）保存到项目文件夹中
+                        
+                        也可以在文本框中输入一个帧序列地址，然后指定帧率进行合成，不指定则参考原视频的帧率
+                        """)
+                        with gr.Row(variant='panel'):
+                            fps_cbox = gr.Checkbox(label="启用输出帧率控制")
+                            fps = gr.Slider(minimum=1, maximum=60, step=1, label='FPS', value=30)
+                        frame_input_dir = gr.Textbox(label='图片输入地址', lines=1,
+                                                     placeholder='input folder, default: video_frame')
+                        video_output_dir = gr.Textbox(label='视频输出地址/名称', lines=1,
+                                                      placeholder='output folder, default: tmp.mp4')
+                        btn3 = gr.Button(value="gene_video")
+                        out3 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
+
+                        def fps_control(project_path, frame_path, video_path, movie_path, cfps, fps_checkbox):
+                            return frames_to_video(project_path, frame_path, video_path, movie_path,
+                                                   cfps if fps_checkbox else None)
+
+                        btn3.click(fps_control,
+                                   inputs=[project_input, frame_input_dir, video_output_dir, movie_input, fps,
+                                           fps_cbox],
+                                   outputs=out3)
+
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         frequency_input = gr.Slider(minimum=1, maximum=1000, step=1, label='Frequency', value=10)
