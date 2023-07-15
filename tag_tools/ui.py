@@ -2,7 +2,7 @@ import os.path
 
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
-from tag_tools.frame_splitter import split_frames, detach_img
+from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration
 
 
 def on_ui_tabs():
@@ -50,7 +50,20 @@ def on_ui_tabs():
                         btn1 = gr.Button(value="detach_img")
                         out1 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
                         btn1.click(detach_img, inputs=[project_input, calcmode], outputs=out1)
-
+                        gr.Markdown("""
+                        ## Stage 3
+                        点击运行，会创建好video_frame、video_mask文件夹，然后执行重构序列的操作，并将过程中记录的位置信息保存到crop_info.json这个文件中，
+                        
+                        将重构好的frame保存到video_frame文件夹中，重构好的mask保存到video_mask文件夹中。
+                        
+                        调整step将会调整扫描框的移动步长，会加快生成效率，但有可能会降低生成质量
+                        """)
+                        with gr.Row(variant='panel'):
+                            step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)
+                            width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1, value=810)
+                        btn2 = gr.Button(value="reconfiguration")
+                        out2 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
+                        btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input], outputs=out2)
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         frequency_input = gr.Slider(minimum=1, maximum=1000, step=1, label='Frequency', value=10)
