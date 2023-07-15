@@ -1,5 +1,6 @@
 import os
 
+
 def delete_ws(folder_path, delete_words):
     delete_word_list = delete_words.split(',')
     delete_word_list = sorted([word.strip() for word in delete_word_list], key=len, reverse=True)

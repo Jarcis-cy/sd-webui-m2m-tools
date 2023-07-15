@@ -157,7 +157,7 @@ def on_ui_tabs():
                                              inputs=[folder_input, old_word_input, new_word_input,
                                                      global_replace_checkbox], outputs=replace_output)
 
-    return [(pro_interface, "Tag tools", "Tag tools")]
+    return [(pro_interface, "M2M tools", "M2M tools")]
 
 
 def process_frequency_to_words(freq_str):
