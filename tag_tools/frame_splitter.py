@@ -98,7 +98,7 @@ def detach_img(project_path, calcmode):
     return "Done"
 
 
-def reconfiguration(project_path, width, movie_path, step):
+def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     video_frame_folder = os.path.join(project_path, "video_frame")
     video_mask_folder = os.path.join(project_path, "video_mask")
     if not os.path.exists(video_frame_folder):
@@ -125,44 +125,47 @@ def reconfiguration(project_path, width, movie_path, step):
     # A dictionary to store the cropping information for each file
     crop_info = {}
 
-    # Process the files in the 'mask' directory
-    for filename in tqdm(os.listdir(mask_folder)):
-        if filename.endswith('.png'):
-            # Load the image
-            img = Image.open(f'{mask_folder}/{filename}')
-            img_array = np.array(img)
+    # First pass to compute the cropping positions for all frames
+    for filename in sorted(os.listdir(mask_folder)):
+        for filename, next_filename in tqdm(zip(os.listdir(mask_folder), os.listdir(mask_folder)[1:] + [None])):
+            if filename.endswith('.png'):
+                # Load the image
+                img = Image.open(f'{mask_folder}/{filename}')
+                img_array = np.array(img)
 
-            # Initialize the max_white_ratio
-            max_white_ratio = 0
+                # Initialize the max_white_ratio
+                max_white_ratio = 0
 
-            # The position of the max box
-            max_box_x = 0
+                # The position of the max box
+                max_box_x = 0
+                max_box_x_2 = 0
 
-            for x in range(0, img_array.shape[1] - box_width, step):
-                white_ratio = calculate_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height))
-                if white_ratio > max_white_ratio:
-                    max_white_ratio = white_ratio
-                    max_box_x = x
+                for x in range(0, img_array.shape[1] - box_width, step):
+                    white_ratio = calculate_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height))
+                    if white_ratio > max_white_ratio:
+                        max_white_ratio = white_ratio
+                        max_box_x = x
 
-            # Calculate the white ratio for each column and find the column with the highest white ratio
-            column_white_ratios = np.sum(img_array, axis=0) / img_array.shape[0]
-            max_column_x = np.argmax(column_white_ratios[max_box_x:max_box_x + box_width]) + max_box_x
+                # Continue to move the box until the box's right border reaches the image's right border
+                for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
+                    max_box_x_2 = x_2
 
-            # Adjust the position of the max box
-            if max_box_x + box_width / 2 < max_column_x:
-                max_box_x += min(5, max_column_x - (max_box_x + box_width / 2))
-            else:
-                max_box_x -= min(5, (max_box_x + box_width / 2) - max_column_x)
+                # Take the union of the two boxes and find the new center
+                new_center = (max_box_x + max_box_x_2) // 2
 
-            # Ensure the max box doesn't go out of the image boundaries
-            max_box_x = max(0, min(img_array.shape[1] - box_width, max_box_x))
+                # The new box is the yellow box
+                yellow_box_x = new_center - box_width // 2
 
-            # Record the cropping information
-            crop_info[filename] = max_box_x
+                # Ensure the yellow box doesn't go out of the image boundaries
+                yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
 
-            # Crop the image to the box and save it
-            img_cropped = img.crop((max_box_x, 0, max_box_x + box_width, box_height))
-            img_cropped.save(f'{video_mask_folder}/{filename}')
+
+                # Record the cropping information
+                crop_info[filename] = yellow_box_x
+
+                # Crop the image to the box and save it
+                img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
+                img_cropped.save(f'{video_mask_folder}/{filename}')
 
     # Save the cropping information as a json file
     with open(os.path.join(project_path, 'crop_info.json'), 'w') as f:
@@ -175,12 +178,14 @@ def reconfiguration(project_path, width, movie_path, step):
             img = Image.open(f'{frame_folder}/{filename}')
 
             # Get the cropping information
-            max_box_x = crop_info.get(filename, 0)
+            yellow_box_x = crop_info.get(filename, 0)
 
             # Crop the image to the box and save it
-            img_cropped = img.crop((max_box_x, 0, max_box_x + box_width, box_height))
+            img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
             img_cropped.save(f'{video_frame_folder}/{filename}')
     return "Done"
+
+
 
 
 def calculate_white_ratio_binary(img_array, top_left, bottom_right):

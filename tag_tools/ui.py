@@ -62,14 +62,17 @@ def on_ui_tabs():
                         将重构好的frame保存到video_frame文件夹中，重构好的mask保存到video_mask文件夹中。
                         
                         调整step将会调整扫描框的移动步长，会加快生成效率，但有可能会降低生成质量
+                        
+                        smooth_factor为平滑过度参数，默认0.9，不建议调整，数值越小，人物在图片中的占比会越大，越居中，但可能导致前后两帧变化幅度过大
                         """)
                         with gr.Row(variant='panel'):
                             step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)
                             width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1,
                                               value=810)
+                            smooth_factor = gr.Slider(minimum=0, maximum=1, step=0.1, label='smooth factor', value=0.9)
                         btn2 = gr.Button(value="reconfiguration")
                         out2 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input],
+                        btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input, smooth_factor],
                                    outputs=out2)
                         gr.Markdown("""
                         ## Stage 4
