@@ -248,3 +248,47 @@ def frames_to_video(project_path, input_folder, output_file, original_video, fps
         videoclip.write_videofile(output_file, codec='libx264')
 
     return "Done"
+
+
+def superposition(project_path, input_folder):
+    if len(input_folder) == 0:
+        input_folder = "crossfade_tmp"
+    input_folder = os.path.join(project_path, input_folder)
+    super_folder = os.path.join(project_path, "refactor_frame")
+    frame_dir = os.path.join(project_path, "frame")
+    corp_json = os.path.join(project_path, "crop_info.json")
+    if not os.path.exists(super_folder):
+        os.makedirs(super_folder)
+    if not os.path.exists(input_folder):
+        return "请先使用ebs至少完成第七步"
+    if not os.path.exists(frame_dir):
+        return "请确认frame文件夹存在"
+    if not os.path.exists(corp_json):
+        return "请确认crop_info.json存在"
+    with open(corp_json, 'r') as f:
+        crop_info = json.load(f)
+    for filename in tqdm(os.listdir(input_folder)):
+        if filename.endswith('.png'):
+            # Load the images
+            img1 = Image.open(f'{frame_dir}/{filename}')
+            img2 = Image.open(f'{input_folder}/{filename}')
+
+            # Get the cropping information
+            max_box_x = crop_info.get(filename, 0)
+
+            # Check if img2 has an alpha channel
+            if img2.mode in ('RGBA', 'LA') or (img2.mode == 'P' and 'transparency' in img2.info):
+                # Binary the alpha channel of img2
+                alpha = img2.getchannel('A')
+                binary_alpha = ImageOps.autocontrast(alpha)
+                img2.putalpha(binary_alpha)
+
+                # Paste img2 onto img1 using the binary alpha channel as the mask
+                img1.paste(img2, (max_box_x, 0), img2)
+            else:
+                # Paste img2 onto img1 without a mask
+                img1.paste(img2, (max_box_x, 0))
+
+            # Save the result
+            img1.save(f'{super_folder}/{filename}')
+    return "Done"

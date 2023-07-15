@@ -2,7 +2,7 @@ import os.path
 
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
-from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration, frames_to_video
+from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration, frames_to_video, superposition
 
 
 def on_ui_tabs():
@@ -11,7 +11,12 @@ def on_ui_tabs():
             with gr.Column(variant='panel'):
                 with gr.Tabs():
                     with gr.TabItem(label='M2M'):
-                        gr.Markdown("## Stage 1")
+                        gr.Markdown("""
+                        ## Stage 1
+                        输入原视频地址以及项目文件夹地址，可以选择是否按照原视频帧率拆帧，如果不自定义拆帧帧率，则按照原视频帧率拆帧。
+
+                        会创建frame文件夹并把每帧都放入frame文件夹中。
+                        """)
                         with gr.Row(variant='panel'):
                             project_input = gr.Textbox(label='Project Path', lines=1)
                             movie_input = gr.Textbox(label='Movie Path', lines=1)
@@ -92,7 +97,23 @@ def on_ui_tabs():
                                    inputs=[project_input, frame_input_dir, video_output_dir, movie_input, fps,
                                            fps_cbox],
                                    outputs=out3)
+                        gr.Markdown("""
+                        ## Stage 5
+                        前往ebs的流程操作，进行生成key帧->图生图->图片放大还原->生成ebs文件->风格迁移->生成新视频（也就是ebs插件执行完stage 7）
 
+                        执行完成后，应该会有一个文件夹crossfade_tmp，这个文件夹中存放着所有的风格迁移好的文件，此时点击运行，插件会先创建refactor_frame文件夹，然后会读取crossfade_tmp中的所有png文件，
+                        
+                        然后根据crop_info.json的内容，将这个文件夹中的同名文件叠加到frame文件夹的同名文件上，并保存到refactor_frame中，这个文件夹中的内容即是变回横板后的图片。
+                        
+                        此时可以回到stage 4，生成视频。
+                        """)
+                        img2img_input_dir = gr.Textbox(label='图片输入地址', lines=1,
+                                                       placeholder='input folder, default: crossfade_tmp')
+                        btn4 = gr.Button(value="superposition")
+                        out4 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
+                        btn4.click(superposition,
+                                   inputs=[project_input, img2img_input_dir],
+                                   outputs=out4)
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         frequency_input = gr.Slider(minimum=1, maximum=1000, step=1, label='Frequency', value=10)
