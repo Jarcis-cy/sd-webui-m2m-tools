@@ -62,6 +62,9 @@ def split_frames(project_path, movie_path, aim_fps=None):
     # Release the video file
     cap.release()
 
+    if not os.path.exists(os.path.join(project_path, "Out")):
+        os.makedirs(os.path.join(project_path, "Out"))
+
     return "Done"
 
 
