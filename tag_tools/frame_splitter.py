@@ -126,46 +126,43 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     crop_info = {}
 
     # First pass to compute the cropping positions for all frames
-    for filename in sorted(os.listdir(mask_folder)):
-        for filename, next_filename in tqdm(zip(os.listdir(mask_folder), os.listdir(mask_folder)[1:] + [None])):
-            if filename.endswith('.png'):
-                # Load the image
-                img = Image.open(f'{mask_folder}/{filename}')
-                img_array = np.array(img)
+    for filename in tqdm(sorted(os.listdir(mask_folder))):
+        if filename.endswith('.png'):
+            # Load the image
+            img = Image.open(f'{mask_folder}/{filename}')
+            img_array = np.array(img)
 
-                # Initialize the max_white_ratio
-                max_white_ratio = 0
+            # Initialize the max_white_ratio
+            max_white_ratio = 0
 
-                # The position of the max box
-                max_box_x = 0
-                max_box_x_2 = 0
+            # The position of the max box
+            max_box_x = 0
+            max_box_x_2 = 0
 
-                for x in range(0, img_array.shape[1] - box_width, step):
-                    white_ratio = calculate_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height))
-                    if white_ratio > max_white_ratio:
-                        max_white_ratio = white_ratio
-                        max_box_x = x
+            for x in range(0, img_array.shape[1] - box_width, step):
+                white_ratio = calculate_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height))
+                if white_ratio > max_white_ratio:
+                    max_white_ratio = white_ratio
+                    max_box_x = x
+            # Continue to move the box until the box's right border reaches the image's right border
+            for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
+                max_box_x_2 = x_2
 
-                # Continue to move the box until the box's right border reaches the image's right border
-                for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
-                    max_box_x_2 = x_2
+            # Take the union of the two boxes and find the new center
+            new_center = (max_box_x + max_box_x_2) // 2
 
-                # Take the union of the two boxes and find the new center
-                new_center = (max_box_x + max_box_x_2) // 2
+            # The new box is the yellow box
+            yellow_box_x = new_center - box_width // 2
 
-                # The new box is the yellow box
-                yellow_box_x = new_center - box_width // 2
+            # Ensure the yellow box doesn't go out of the image boundaries
+            yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
 
-                # Ensure the yellow box doesn't go out of the image boundaries
-                yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
+            # Record the cropping information
+            crop_info[filename] = yellow_box_x
 
-
-                # Record the cropping information
-                crop_info[filename] = yellow_box_x
-
-                # Crop the image to the box and save it
-                img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
-                img_cropped.save(f'{video_mask_folder}/{filename}')
+            # Crop the image to the box and save it
+            img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
+            img_cropped.save(f'{video_mask_folder}/{filename}')
 
     # Save the cropping information as a json file
     with open(os.path.join(project_path, 'crop_info.json'), 'w') as f:
