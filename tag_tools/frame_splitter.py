@@ -143,21 +143,36 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
                 white_ratio = calculate_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height))
                 if white_ratio > max_white_ratio:
                     max_white_ratio = white_ratio
-                    max_box_x = x
-            # Continue to move the box until the box's right border reaches the image's right border
+                    max_box_x = x  # the left border of the red box
+
+            # Create a green box at the position where the red box stopped
+            max_box_x_2 = max_box_x  # the left border of the green box
+
+            # Continue to move the green box until its left border touches the white pixels
             for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
+                white_ratio_2 = calculate_white_ratio_binary(img_array, (x_2, 0), (x_2 + box_width, box_height))
+                if white_ratio_2 < max_white_ratio * 0.5:  # Change this threshold as needed
+                    break
                 max_box_x_2 = x_2
 
-            # Take the union of the two boxes and find the new center
-            new_center = (max_box_x + max_box_x_2) // 2
+            # Take the union of the red box and the green box, creating a new large box
+            new_center = (max_box_x + max_box_x_2 + box_width) // 2
 
-            # The new box is the yellow box
+            # Use the smooth factor to adjust the center of the yellow box
+            if filename in crop_info:
+                prev_center = crop_info[filename] + box_width // 2
+                new_center = int(smooth_factor * prev_center + (1 - smooth_factor) * new_center)
+
+            # Create a yellow box with its center at the center of the new large box
             yellow_box_x = new_center - box_width // 2
 
             # Ensure the yellow box doesn't go out of the image boundaries
             yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
 
-            # Record the cropping information
+
+
+
+# Record the cropping information
             crop_info[filename] = yellow_box_x
 
             # Crop the image to the box and save it
