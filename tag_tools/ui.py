@@ -1,6 +1,8 @@
+import os.path
+
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
-from tag_tools.frame_splitter import split_frames
+from tag_tools.frame_splitter import split_frames, detach_img
 
 
 def on_ui_tabs():
@@ -9,7 +11,7 @@ def on_ui_tabs():
             with gr.Column(variant='panel'):
                 with gr.Tabs():
                     with gr.TabItem(label='M2M'):
-                        gr.Markdown("### Stage 1")
+                        gr.Markdown("## Stage 1")
                         with gr.Row(variant='panel'):
                             project_input = gr.Textbox(label='Project Path', lines=1)
                             movie_input = gr.Textbox(label='Movie Path', lines=1)
@@ -28,8 +30,27 @@ def on_ui_tabs():
                             # Otherwise, pass None to split_frames
                             split_frames(project_path, movie_path, fps if fps_checkbox else None)
 
+                        out = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
                         btn.click(split_frames_with_fps_control,
-                                  inputs=[project_input, movie_input, aim_fps_checkbox, aim_fps])
+                                  inputs=[project_input, movie_input, aim_fps_checkbox, aim_fps], outputs=out)
+
+                        gr.Markdown("""
+                        ## Stage 2
+                        这一步是为使用segment anything做批量抠图设计的便捷功能
+                        
+                        在使用这一步之前，请确保已经做完以下操作：
+                        1. 开启GroundingDINO，源目录填写 项目地址/frame 目标目录填写 项目地址/Out 
+                        2. 单独输出每张图像一般选择3，这样可以选择更合适的抠图效果
+                        3. 选择保存蒙版后图像和保存蒙版
+                        4. 开始批量处理
+                        
+                        然后在下方选择一个合适的抠图效果
+                        """)
+                        calcmode = gr.Radio(label="请选择你喜欢的蒙版", choices=["0", "1", "2"], value="2")
+                        btn1 = gr.Button(value="detach_img")
+                        out1 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
+                        btn1.click(detach_img, inputs=[project_input, calcmode], outputs=out1)
+
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         frequency_input = gr.Slider(minimum=1, maximum=1000, step=1, label='Frequency', value=10)

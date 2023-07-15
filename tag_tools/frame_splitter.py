@@ -1,7 +1,10 @@
 import cv2
 import os
+import re
+import shutil
 from tqdm import tqdm
 import math
+
 
 def split_frames(project_path, movie_path, aim_fps=None):
     # Ensure the project directory exists
@@ -42,7 +45,7 @@ def split_frames(project_path, movie_path, aim_fps=None):
         # Save every nth frame, where n is the frame_skip
         if frame_count % frame_skip == 0:
             # Generate the filename for the frame
-            filename = f"{saved_frames+1:0{num_digits}d}.png"
+            filename = f"{saved_frames + 1:0{num_digits}d}.png"
             frame_path = os.path.join(frame_dir, filename)
             cv2.imwrite(frame_path, frame)
             saved_frames += 1
@@ -55,6 +58,34 @@ def split_frames(project_path, movie_path, aim_fps=None):
     # Release the video file
     cap.release()
 
-    # Create the additional directories
-    for dir_name in ["Out", "Human", "Mask"]:
-        os.makedirs(os.path.join(project_path, dir_name), exist_ok=True)
+    return "Done"
+
+
+def detach_img(project_path, calcmode):
+    out_folder = os.path.join(project_path, "Out")
+    mask_folder = os.path.join(project_path, "Mask")
+    human_folder = os.path.join(project_path, "Human")
+    if not os.path.exists(out_folder):
+        os.makedirs(out_folder)
+    if not os.path.exists(mask_folder):
+        os.makedirs(mask_folder)
+    if not os.path.exists(human_folder):
+        os.makedirs(human_folder)
+
+    for file in os.listdir(out_folder):
+        if file.endswith('.png'):
+            # 通过正则表达式来解析文件名，提取出关键信息
+            match = re.match(r'(\d+)_' + calcmode + '_(mask|output).png', file)
+            if match:
+                num, file_type = match.groups()
+
+                new_filename = f'{num}.png'
+
+                # 根据文件类型将文件复制到相应的文件夹，并重命名
+                if file_type == 'mask':
+                    shutil.copy(os.path.join(out_folder, file),
+                                os.path.join(out_folder, mask_folder, new_filename))
+                elif file_type == 'output':
+                    shutil.copy(os.path.join(out_folder, file),
+                                os.path.join(out_folder, human_folder, new_filename))
+    return "Done"
