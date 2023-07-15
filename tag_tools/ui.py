@@ -1,9 +1,6 @@
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
 
-import gradio as gr
-from tag_tools import process_files, replace_words, delete_words
-
 
 def on_ui_tabs():
     with gr.Blocks(analytics_enabled=False) as pro_interface:
