@@ -124,58 +124,56 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
 
     # A dictionary to store the cropping information for each file
     crop_info = {}
-
-    # First pass to compute the cropping positions for all frames
+    # 在循环外部初始化prev_center为0
+    prev_center = 0
+    # 首次循环，计算所有帧的裁剪位置
     for filename in tqdm(sorted(os.listdir(mask_folder))):
         if filename.endswith('.png'):
-            # Load the image
+            # 加载图像
             img = Image.open(f'{mask_folder}/{filename}')
             img_array = np.array(img)
 
-            # Initialize the max_white_ratio
-            max_white_ratio = 0
+            person_height = calculate_person_height(img_array)
 
-            # The position of the max box
+            # 最大区域的位置
             max_box_x = 0
-            max_box_x_2 = 0
+
+            # 在这些变量之前定义一个新的标志变量
+            has_encountered_white = False
 
             for x in range(0, img_array.shape[1] - box_width, step):
-                white_ratio = calculate_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height))
-                if white_ratio > max_white_ratio:
-                    max_white_ratio = white_ratio
-                    max_box_x = x  # the left border of the red box
+                edge_white_ratio = calculate_continuous_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height),person_height, 'right')
+                if edge_white_ratio > 0.3: # 当连续的白色像素占比超过30%时，我们认为已经触及到了人体主体
+                    has_encountered_white = True
+                if has_encountered_white and edge_white_ratio < 0.2:
+                    break
+                max_box_x = x
+            # 在红框停止位置生成绿框
+            max_box_x_2 = max_box_x  # 绿框的左边界
 
-            # Create a green box at the position where the red box stopped
-            max_box_x_2 = max_box_x  # the left border of the green box
-
-            # Continue to move the green box until its left border touches the white pixels
+            # 继续移动绿框，直到其左边界的白色像素占比大于20%
             for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
-                white_ratio_2 = calculate_white_ratio_binary(img_array, (x_2, 0), (x_2 + box_width, box_height))
-                if white_ratio_2 < max_white_ratio * 0.5:  # Change this threshold as needed
+                edge_white_ratio_2 = calculate_continuous_white_ratio_binary(img_array, (x_2, 0), (x_2 + box_width, box_height),person_height, 'left')
+                if edge_white_ratio_2 > 0.2:  # 更改阈值为20%
                     break
                 max_box_x_2 = x_2
 
-            # Take the union of the red box and the green box, creating a new large box
+            # 取红框和绿框的并集，生成新的大框
             new_center = (max_box_x + max_box_x_2 + box_width) // 2
-
-            # Use the smooth factor to adjust the center of the yellow box
-            if filename in crop_info:
-                prev_center = crop_info[filename] + box_width // 2
+            # 使用平滑因子调整黄框的中心
+            if prev_center:  # 判断prev_center是否非0
                 new_center = int(smooth_factor * prev_center + (1 - smooth_factor) * new_center)
-
-            # Create a yellow box with its center at the center of the new large box
+            # 在新的大框中心生成黄框
             yellow_box_x = new_center - box_width // 2
-
-            # Ensure the yellow box doesn't go out of the image boundaries
+            # 确保黄框不会超出图像边界
             yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
 
-
-
-
-# Record the cropping information
+            # 记录裁剪信息
             crop_info[filename] = yellow_box_x
+            # 更新prev_center
+            prev_center = new_center
 
-            # Crop the image to the box and save it
+            # 裁剪图像并保存
             img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
             img_cropped.save(f'{video_mask_folder}/{filename}')
 
@@ -196,6 +194,78 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
             img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
             img_cropped.save(f'{video_frame_folder}/{filename}')
     return "Done"
+
+
+def calculate_person_height(img_array):
+    """
+    计算人物主体的高度。
+
+    参数:
+    img_array (numpy.array): 图像的numpy数组形式
+
+    返回:
+    int: 人物主体的高度
+    """
+    top = 0
+    bottom = img_array.shape[0] - 1
+
+    # 从上到下扫描，找到第一个白色像素的行
+    for y in range(img_array.shape[0]):
+        if np.any(img_array[y, :]):  # 如果这一行存在白色像素
+            top = y
+            break
+
+    # 从下到上扫描，找到最后一个白色像素的行
+    for y in range(img_array.shape[0] - 1, -1, -1):
+        if np.any(img_array[y, :]):  # 如果这一行存在白色像素
+            bottom = y
+            break
+
+    # 计算人物主体的高度
+    person_height = bottom - top + 1
+
+    return person_height
+
+
+def calculate_continuous_white_ratio_binary(img_array, top_left, bottom_right, height, side='right'):
+    """
+    计算给定区域中连续白色像素占总白色像素的比例。
+
+    参数:
+    img_array (numpy.array): 图像的numpy数组形式
+    top_left (tuple): 区域左上角的坐标
+    bottom_right (tuple): 区域右下角的坐标
+    height (int): 人物主体的高度
+    side (str): 指定是在框的左边界还是右边界计算白色像素的连续占比，默认值为'right'
+
+    返回:
+    float: 给定区域中连续白色像素占总白色像素的比例
+    """
+    # 根据 side 参数选择边界的 x 坐标
+    x = top_left[0] if side == 'left' else bottom_right[0] - 1
+
+    # 提取边界的像素值
+    edge_pixels = img_array[top_left[1]:bottom_right[1], x]
+
+    # 如果总的像素为0，直接返回0
+    if height == 0:
+        return 0
+
+    # 计算连续白色像素
+    continuous_white_pixels = 0
+    white_started = False
+    for pixel in edge_pixels:
+        if pixel:
+            continuous_white_pixels += 1
+            white_started = True
+        elif white_started and continuous_white_pixels / height < 0.2:
+            break
+
+    # 计算连续白色像素占总的白色像素的比例
+    continuous_white_ratio = continuous_white_pixels / height
+
+    return continuous_white_ratio
+
 
 
 
