@@ -10,6 +10,7 @@ import json
 from moviepy.editor import concatenate_videoclips, VideoFileClip, AudioFileClip
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
+from functools import partial
 
 
 def split_frames(project_path, movie_path, aim_fps=None):
@@ -183,7 +184,8 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     with open(os.path.join(project_path, 'crop_info.json'), 'w') as f:
         json.dump(crop_info, f)
 
-    def process_image(filename):
+    def process_image(args):
+        filename, crop_info = args
         img = Image.open(f'{frame_folder}/{filename}')
         yellow_box_x = crop_info.get(filename, 0)
         img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
@@ -192,18 +194,17 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     # 获取所有图片文件名
     filenames = [f for f in os.listdir(frame_folder) if f.endswith('.png')]
 
-    # 初始化crop_info字典
-    crop_info = {filename: 0 for filename in filenames}
-
     # 获取CPU核心数，设置线程数量为核心数的75%
     num_cores = multiprocessing.cpu_count()
     num_workers = int(num_cores * 0.75)
 
-    # 创建线程池
+    args_list = [(filename, crop_info) for filename in filenames]
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        # 使用tqdm显示处理进度
-        list(tqdm(executor.map(process_image, filenames), total=len(filenames)))
+        list(tqdm(executor.map(process_image, args_list), total=len(filenames)))
+
     return "Done"
+
 
 
 def calculate_person_height(img_array):
