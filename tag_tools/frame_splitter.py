@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageOps
 import json
 from moviepy.editor import concatenate_videoclips, VideoFileClip, AudioFileClip
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 
 def split_frames(project_path, movie_path, aim_fps=None):
@@ -181,18 +183,26 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     with open(os.path.join(project_path, 'crop_info.json'), 'w') as f:
         json.dump(crop_info, f)
 
-    # Process the files in the 'frame' directory
-    for filename in tqdm(os.listdir(frame_folder)):
-        if filename.endswith('.png'):
-            # Load the image
-            img = Image.open(f'{frame_folder}/{filename}')
+    def process_image(filename):
+        img = Image.open(f'{frame_folder}/{filename}')
+        yellow_box_x = crop_info.get(filename, 0)
+        img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
+        img_cropped.save(f'{video_frame_folder}/{filename}')
 
-            # Get the cropping information
-            yellow_box_x = crop_info.get(filename, 0)
+    # 获取所有图片文件名
+    filenames = [f for f in os.listdir(frame_folder) if f.endswith('.png')]
 
-            # Crop the image to the box and save it
-            img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
-            img_cropped.save(f'{video_frame_folder}/{filename}')
+    # 初始化crop_info字典
+    crop_info = {filename: 0 for filename in filenames}
+
+    # 获取CPU核心数，设置线程数量为核心数的75%
+    num_cores = multiprocessing.cpu_count()
+    num_workers = int(num_cores * 0.75)
+
+    # 创建线程池
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        # 使用tqdm显示处理进度
+        list(tqdm(executor.map(process_image, filenames), total=len(filenames)))
     return "Done"
 
 
