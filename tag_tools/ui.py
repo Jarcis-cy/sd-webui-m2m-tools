@@ -139,12 +139,16 @@ def on_ui_tabs():
                         此时可以回到stage 4，生成视频。
                         """)
                         img2img_input_dir = gr.Textbox(label='图片输入地址', lines=1,
-                                                       placeholder='input folder, default: crossfade_tmp')
+                                                       placeholder='input folder, default: if exact：exact_img2img_key else: crossfade_tmp')
                         btn4 = gr.Button(value="superposition")
                         out4 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        btn4.click(superposition,
+                        if exact_match:
+                            btn4.click()
+                        else:
+                            btn4.click(superposition,
                                    inputs=[project_input, img2img_input_dir],
                                    outputs=out4)
+
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         frequency_input = gr.Slider(minimum=1, maximum=1000, step=1, label='Frequency', value=10)
