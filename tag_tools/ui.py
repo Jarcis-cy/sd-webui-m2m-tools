@@ -57,14 +57,31 @@ def on_ui_tabs():
                         btn1.click(detach_img, inputs=[project_input, calcmode], outputs=out1)
                         gr.Markdown("""
                         ## Stage 3
+                        流程分为开启精准匹配和非精准匹配两种，精准匹配可以将图完整的融合进原视频中，但没有竖屏视频的生成，非精准匹配可以生成竖屏视频
+                        
+                        #### 精准匹配模式
+                        
+                        如果开启精准匹配模式，程序会尝试匹配出蒙版中的主体，然后裁切并记录裁切大小和具体坐标。这样裁切出来的内容大小是不一致的
+                        点击运行，程序会检查是否存在video_key文件夹，如果存在，则会执行精准裁切模式，并在裁切完成后，创建exact_img2img_key文件夹，请将图生图后的结果放入其中。如果图生图出的尺寸不是原尺寸，则应该先放大回原尺寸再放入其中
+                        如果不存在，则会创建好video_frame、video_mask文件夹，并将frame和mask文件夹中的内容拷贝进去等待执行ebs的执行stage 2生成key帧
+                        
+                        **所以有三个注意点：**
+                        1. 在图生图的时候，不能选择固定的像素大小，而是应该选择倍率。
+                        2. 流程：抠图 -> Stage 2 -> ebs填写源视频地址和项目目录，并执行stage 2生成key帧 -> Stage 3(精准匹配) -> 图生图 -> 返回ebs的stage5生成ebs文件 -> 风格迁移 -> 生成新视频
+                        3. 当选择精准匹配模式后，程序会创建exact_frame文件夹和exact_mask文件夹，并将裁切好的蒙版和帧序列文件存入其中。位置信息将会被保存到exact_crop_info.json这个文件中
+                        
+                        #### 非精准匹配模式
                         点击运行，会创建好video_frame、video_mask文件夹，然后执行重构序列的操作，并将过程中记录的位置信息保存到crop_info.json这个文件中，
                         
                         将重构好的frame保存到video_frame文件夹中，重构好的mask保存到video_mask文件夹中。
+                        
+                        流程：抠图 -> Stage 2 -> Stage 3(非精准匹配) -> Stage 4 -> Stage 5 ->Stage 4
                         
                         调整step将会调整扫描框的移动步长，会加快生成效率，但有可能会降低生成质量
                         
                         smooth_factor为平滑过度参数，默认0.9，不建议调整，数值越小，人物在图片中的占比会越大，越居中，但可能导致前后两帧变化幅度过大
                         """)
+                        exact_match = gr.Checkbox(label="开启精准匹配模式")
                         with gr.Row(variant='panel'):
                             step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)
                             width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1,
@@ -72,7 +89,10 @@ def on_ui_tabs():
                             smooth_factor = gr.Slider(minimum=0, maximum=1, step=0.1, label='smooth factor', value=0.9)
                         btn2 = gr.Button(value="reconfiguration")
                         out2 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input, smooth_factor],
+                        if exact_match:
+                            btn2.click(outputs=out2)
+                        else:
+                            btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input, smooth_factor],
                                    outputs=out2)
                         gr.Markdown("""
                         ## Stage 4
@@ -102,6 +122,14 @@ def on_ui_tabs():
                                    outputs=out3)
                         gr.Markdown("""
                         ## Stage 5
+                        
+                        #### 精准匹配模式：
+                        
+                        程序会读取exact_crop_info.json中的信息，然后查看exact_img2img_key中的图片信息，会先确认大小与文件中记录的大小是否一致，如果不一致，则会提示先放大回原图再生成
+                        
+                        如果信息无误，则会开始拼接工作，并将拼接后的结果放入img2img_key文件夹中，便于ebs进行操作。
+                        
+                        #### 非精准匹配模式：
                         前往ebs的流程操作，进行生成key帧->图生图->图片放大还原->生成ebs文件->风格迁移->生成新视频（也就是ebs插件执行完stage 7）
 
                         执行完成后，应该会有一个文件夹crossfade_tmp，这个文件夹中存放着所有的风格迁移好的文件，此时点击运行，插件会先创建refactor_frame文件夹，然后会读取crossfade_tmp中的所有png文件，
