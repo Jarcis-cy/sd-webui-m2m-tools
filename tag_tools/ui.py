@@ -70,6 +70,7 @@ def on_ui_tabs():
                         1. 在图生图的时候，不能选择固定的像素大小，而是应该选择倍率。
                         2. 流程：抠图 -> Stage 2 -> ebs填写源视频地址和项目目录，并执行stage 2生成key帧 -> Stage 3(精准匹配) -> 图生图 -> 返回ebs的stage5生成ebs文件 -> 风格迁移 -> 生成新视频
                         3. 当选择精准匹配模式后，程序会创建exact_frame文件夹和exact_mask文件夹，并将裁切好的蒙版和帧序列文件存入其中。位置信息将会被保存到exact_crop_info.json这个文件中
+                        4. 目前因为只有官方的批量才支持批量的时候每个图片的大小不一致，所以就不能控制每张图片的prompt
                         
                         #### 非精准匹配模式
                         点击运行，会创建好video_frame、video_mask文件夹，然后执行重构序列的操作，并将过程中记录的位置信息保存到crop_info.json这个文件中，
@@ -83,7 +84,7 @@ def on_ui_tabs():
                         smooth_factor为平滑过度参数，默认0.9，不建议调整，数值越小，人物在图片中的占比会越大，越居中，但可能导致前后两帧变化幅度过大
                         """)
                         with gr.Row(variant='panel'):
-                            exact_match_cb = gr.Checkbox(label="开启精准匹配模式")
+                            exact_match_cb = gr.Checkbox(label="开启精准匹配模式", value=False)
                             ebs_cb = gr.Checkbox(label="是否使用ebs", value=True)
                         with gr.Row(variant='panel'):
                             step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)

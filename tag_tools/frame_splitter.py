@@ -176,7 +176,10 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
             yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
 
             # 记录裁剪信息
-            crop_info[filename] = yellow_box_x
+            crop_info[filename] = {
+                'crop_x': yellow_box_x,
+                'center_coordinates': (yellow_box_x + box_width // 2, box_height // 2)
+            }
             # 更新prev_center
             prev_center = new_center
 
@@ -191,7 +194,7 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     def process_image(args):
         filename, crop_info = args
         img = Image.open(f'{frame_folder}/{filename}')
-        yellow_box_x = crop_info.get(filename, 0)
+        yellow_box_x = crop_info.get(filename, {}).get('crop_x', 0)
         img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
         img_cropped.save(f'{video_frame_folder}/{filename}')
 
@@ -375,7 +378,7 @@ def superposition(project_path, input_folder):
             img2 = Image.open(f'{input_folder}/{filename}')
 
             # Get the cropping information
-            max_box_x = crop_info.get(filename, 0)
+            center_coordinates = crop_info.get(filename, {}).get('center_coordinates', (0, 0))
 
             # Check if img2 has an alpha channel
             if img2.mode in ('RGBA', 'LA') or (img2.mode == 'P' and 'transparency' in img2.info):
@@ -385,10 +388,10 @@ def superposition(project_path, input_folder):
                 img2.putalpha(binary_alpha)
 
                 # Paste img2 onto img1 using the binary alpha channel as the mask
-                img1.paste(img2, (max_box_x, 0), img2)
+                img1.paste(img2, center_coordinates, img2)
             else:
                 # Paste img2 onto img1 without a mask
-                img1.paste(img2, (max_box_x, 0))
+                img1.paste(img2, center_coordinates)
 
             # Save the result
             img1.save(f'{super_folder}/{filename}')
