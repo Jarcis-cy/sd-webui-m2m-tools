@@ -145,8 +145,10 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
             has_encountered_white = False
 
             for x in range(0, img_array.shape[1] - box_width, step):
-                edge_white_ratio = calculate_continuous_white_ratio_binary(img_array, (x, 0), (x + box_width, box_height),person_height, 'right')
-                if edge_white_ratio > 0.3: # 当连续的白色像素占比超过30%时，我们认为已经触及到了人体主体
+                edge_white_ratio = calculate_continuous_white_ratio_binary(img_array, (x, 0),
+                                                                           (x + box_width, box_height), person_height,
+                                                                           'right')
+                if edge_white_ratio > 0.3:  # 当连续的白色像素占比超过30%时，我们认为已经触及到了人体主体
                     has_encountered_white = True
                 if has_encountered_white and edge_white_ratio < 0.2:
                     break
@@ -156,7 +158,9 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
 
             # 继续移动绿框，直到其左边界的白色像素占比大于20%
             for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
-                edge_white_ratio_2 = calculate_continuous_white_ratio_binary(img_array, (x_2, 0), (x_2 + box_width, box_height),person_height, 'left')
+                edge_white_ratio_2 = calculate_continuous_white_ratio_binary(img_array, (x_2, 0),
+                                                                             (x_2 + box_width, box_height),
+                                                                             person_height, 'left')
                 if edge_white_ratio_2 > 0.2:  # 更改阈值为20%
                     break
                 max_box_x_2 = x_2
@@ -204,7 +208,6 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
         list(tqdm(executor.map(process_image, args_list), total=len(filenames)))
 
     return "Done"
-
 
 
 def calculate_person_height(img_array):
@@ -276,9 +279,6 @@ def calculate_continuous_white_ratio_binary(img_array, top_left, bottom_right, h
     continuous_white_ratio = continuous_white_pixels / height
 
     return continuous_white_ratio
-
-
-
 
 
 def calculate_white_ratio_binary(img_array, top_left, bottom_right):
@@ -392,4 +392,136 @@ def superposition(project_path, input_folder):
 
             # Save the result
             img1.save(f'{super_folder}/{filename}')
+    return "Done"
+
+
+def copy_png_files(source_folder, destination_folder):
+    # 检查源文件夹是否存在
+    if not os.path.exists(source_folder):
+        print("源文件夹不存在。")
+        return
+
+    # 检查目标文件夹是否存在，如果不存在则创建
+    if not os.path.exists(destination_folder):
+        os.makedirs(destination_folder)
+
+    # 获取源文件夹中的所有文件
+    files = os.listdir(source_folder)
+
+    # 遍历文件夹中的每个文件
+    for file in files:
+        # 检查文件是否为 PNG 文件
+        if file.endswith(".png"):
+            # 构建源文件和目标文件的路径
+            source_path = os.path.join(source_folder, file)
+            destination_path = os.path.join(destination_folder, file)
+
+            # 复制文件
+            shutil.copy(source_path, destination_path)
+
+    print("文件复制完成。")
+
+
+def exact_match(project_path, ebs):
+    # 确保路径存在
+    mask_folder = os.path.join(project_path, "video_mask")
+    if not os.path.exists(mask_folder):
+        os.makedirs(mask_folder)
+    frame_folder = os.path.join(project_path, "video_frame")
+    if not os.path.exists(frame_folder):
+        os.makedirs(frame_folder)
+    exact_mask_folder = os.path.join(project_path, "exact_mask")
+    if not os.path.exists(exact_mask_folder):
+        os.makedirs(exact_mask_folder)
+    exact_frame_folder = os.path.join(project_path, "exact_frame")
+    if not os.path.exists(exact_frame_folder):
+        os.makedirs(exact_frame_folder)
+    copy_png_files(os.path.join(project_path, "Mask"), mask_folder)
+    copy_png_files(os.path.join(project_path, "frame"), frame_folder)
+    key_folder = os.path.join(project_path, "video_key")
+    if not os.path.exists(key_folder) and ebs:
+        return "请先执行ebs stage 2 生成key帧"
+    # 初始化存储裁剪信息的字典
+    crop_info = {}
+
+    # 遍历蒙版文件夹中的所有文件
+    handle_folder = ""
+    if ebs:
+        handle_folder = key_folder
+    else:
+        handle_folder = mask_folder
+    for filename in tqdm(os.listdir(handle_folder), desc="处理蒙版"):
+        if filename.endswith('.png'):
+            # 加载图像
+            img = Image.open(os.path.join(mask_folder, filename))
+            img_array = np.array(img)
+
+            # 从四个方向向中心扫描，找到第一个非黑色像素点
+            top = 0
+            bottom = img_array.shape[0] - 1
+            left = 0
+            right = img_array.shape[1] - 1
+
+            # 从上到下扫描
+            for y in range(img_array.shape[0]):
+                if np.any(img_array[y, :]):  # 如果这一行存在非黑色像素
+                    top = y
+                    break
+
+            # 从下到上扫描
+            for y in range(img_array.shape[0] - 1, -1, -1):
+                if np.any(img_array[y, :]):  # 如果这一行存在非黑色像素
+                    bottom = y
+                    break
+
+            # 从左到右扫描
+            for x in range(img_array.shape[1]):
+                if np.any(img_array[:, x]):  # 如果这一列存在非黑色像素
+                    left = x
+                    break
+
+            # 从右到左扫描
+            for x in range(img_array.shape[1] - 1, -1, -1):
+                if np.any(img_array[:, x]):  # 如果这一列存在非黑色像素
+                    right = x
+                    break
+
+            # 计算长和宽
+            width = right - left + 1
+            height = bottom - top + 1
+
+            # 调整长和宽，使其能被4整除
+            while width % 4 != 0:
+                width += 1
+            while height % 4 != 0:
+                height += 1
+
+            # 计算中心坐标
+            center_x = (left + right) // 2
+            center_y = (top + bottom) // 2
+
+            # 裁切长方形区域
+            img_cropped = img.crop(
+                (center_x - width // 2, center_y - height // 2, center_x + width // 2, center_y + height // 2))
+
+            # 保存裁切后的图像
+            img_cropped.save(os.path.join(exact_mask_folder, filename))
+
+            # 裁剪对应的帧并保存
+            if ebs:
+                frame = Image.open(os.path.join(key_folder, filename))
+            else:
+                frame = Image.open(os.path.join(frame_folder, filename))
+
+            frame_cropped = frame.crop(
+                (center_x - width // 2, center_y - height // 2, center_x + width // 2, center_y + height // 2))
+            frame_cropped.save(os.path.join(exact_frame_folder, filename))
+
+            # 记录裁剪信息
+            crop_info[filename] = (center_x, center_y, width, height)
+
+    # 保存裁剪信息为json文件
+    with open(os.path.join(project_path, 'exact_crop_info.json'), 'w') as f:
+        json.dump(crop_info, f)
+
     return "Done"

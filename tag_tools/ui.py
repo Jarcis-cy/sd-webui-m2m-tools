@@ -2,7 +2,8 @@ import os.path
 
 import gradio as gr
 from tag_tools import process_files, replace_words, delete_words
-from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration, frames_to_video, superposition
+from tag_tools.frame_splitter import split_frames, detach_img, reconfiguration, frames_to_video, superposition, \
+    exact_match
 
 
 def on_ui_tabs():
@@ -81,7 +82,9 @@ def on_ui_tabs():
                         
                         smooth_factor为平滑过度参数，默认0.9，不建议调整，数值越小，人物在图片中的占比会越大，越居中，但可能导致前后两帧变化幅度过大
                         """)
-                        exact_match = gr.Checkbox(label="开启精准匹配模式")
+                        with gr.Row(variant='panel'):
+                            exact_match_cb = gr.Checkbox(label="开启精准匹配模式")
+                            ebs_cb = gr.Checkbox(label="是否使用ebs", value=True)
                         with gr.Row(variant='panel'):
                             step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)
                             width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1,
@@ -89,11 +92,12 @@ def on_ui_tabs():
                             smooth_factor = gr.Slider(minimum=0, maximum=1, step=0.1, label='smooth factor', value=0.9)
                         btn2 = gr.Button(value="reconfiguration")
                         out2 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        if exact_match:
-                            btn2.click(outputs=out2)
+                        if exact_match_cb:
+                            btn2.click(exact_match, inputs=[project_input, ebs_cb], outputs=out2)
                         else:
-                            btn2.click(reconfiguration, inputs=[project_input, width, movie_input, step_input, smooth_factor],
-                                   outputs=out2)
+                            btn2.click(reconfiguration,
+                                       inputs=[project_input, width, movie_input, step_input, smooth_factor],
+                                       outputs=out2)
                         gr.Markdown("""
                         ## Stage 4
                         重新合并帧序列，将重构好的帧重新生成一个新的视频，便于ebs处理
@@ -139,15 +143,16 @@ def on_ui_tabs():
                         此时可以回到stage 4，生成视频。
                         """)
                         img2img_input_dir = gr.Textbox(label='图片输入地址', lines=1,
-                                                       placeholder='input folder, default: if exact：exact_img2img_key else: crossfade_tmp')
+                                                       placeholder='input folder, default: if exact：exact_img2img_key '
+                                                                   'else: crossfade_tmp')
                         btn4 = gr.Button(value="superposition")
                         out4 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
                         if exact_match:
-                            btn4.click()
+                            pass
                         else:
                             btn4.click(superposition,
-                                   inputs=[project_input, img2img_input_dir],
-                                   outputs=out4)
+                                       inputs=[project_input, img2img_input_dir],
+                                       outputs=out4)
 
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
@@ -182,7 +187,8 @@ def on_ui_tabs():
                     with gr.TabItem(label='Replace Words'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
                         old_word_input = gr.Textbox(label='Old Word', lines=1,
-                                                    placeholder="If left empty, the New Word will be added to the end of all files.")
+                                                    placeholder="If left empty, the New Word will be added to the end "
+                                                                "of all files.")
                         new_word_input = gr.Textbox(label='New Word', lines=1)
                         global_replace_checkbox = gr.Checkbox(label="Global Replace")
                         replace_button = gr.Button(value="Replace Words")
