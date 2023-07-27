@@ -70,7 +70,7 @@ def on_ui_tabs():
                         1. 在图生图的时候，不能选择固定的像素大小，而是应该选择倍率。
                         2. 流程：抠图 -> Stage 2 -> ebs填写源视频地址和项目目录，并执行stage 2生成key帧 -> Stage 3(精准匹配) -> 图生图 -> 返回ebs的stage5生成ebs文件 -> 风格迁移 -> 生成新视频
                         3. 当选择精准匹配模式后，程序会创建exact_frame文件夹和exact_mask文件夹，并将裁切好的蒙版和帧序列文件存入其中。位置信息将会被保存到exact_crop_info.json这个文件中
-                        4. 目前因为只有官方的批量才支持批量的时候每个图片的大小不一致，所以就不能控制每张图片的prompt
+                        4. 目前因为只有官方的批量才支持批量的时候每个图片的大小不一致，所以就不能控制每张图片的prompt,所以暂时还是**建议使用非精准匹配**
                         
                         #### 非精准匹配模式
                         点击运行，会创建好video_frame、video_mask文件夹，然后执行重构序列的操作，并将过程中记录的位置信息保存到crop_info.json这个文件中，
@@ -84,21 +84,19 @@ def on_ui_tabs():
                         smooth_factor为平滑过度参数，默认0.9，不建议调整，数值越小，人物在图片中的占比会越大，越居中，但可能导致前后两帧变化幅度过大
                         """)
                         with gr.Row(variant='panel'):
-                            exact_match_cb = gr.Checkbox(label="开启精准匹配模式", value=False)
+                            exact_match_cb = gr.Checkbox(label="开启精准匹配模式")
                             ebs_cb = gr.Checkbox(label="是否使用ebs", value=True)
+                            width_cb = gr.Checkbox(label="是否控制宽度")
                         with gr.Row(variant='panel'):
-                            step_input = gr.Slider(minimum=1, maximum=100, step=1, label='step size', value=5)
                             width = gr.Slider(minimum=1, maximum=4000, step=1, label='sequence width', lines=1,
                                               value=810)
                             smooth_factor = gr.Slider(minimum=0, maximum=1, step=0.1, label='smooth factor', value=0.9)
                         btn2 = gr.Button(value="reconfiguration")
                         out2 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        if exact_match_cb:
-                            btn2.click(exact_match, inputs=[project_input, ebs_cb], outputs=out2)
-                        else:
-                            btn2.click(reconfiguration,
-                                       inputs=[project_input, width, movie_input, step_input, smooth_factor],
-                                       outputs=out2)
+
+                        btn2.click(process_inputs,
+                                   inputs=[project_input, ebs_cb, width, width_cb, movie_input, smooth_factor, exact_match_cb],
+                                   outputs=out2)
                         gr.Markdown("""
                         ## Stage 4
                         重新合并帧序列，将重构好的帧重新生成一个新的视频，便于ebs处理
@@ -113,7 +111,7 @@ def on_ui_tabs():
                         frame_input_dir = gr.Textbox(label='图片输入地址', lines=1,
                                                      placeholder='input folder, default: video_frame')
                         video_output_dir = gr.Textbox(label='视频输出地址/名称', lines=1,
-                                                      placeholder='output folder, default: tmp.mp4')
+                                                      placeholder='output folder, default: final_output.mp4')
                         btn3 = gr.Button(value="gene_video")
                         out3 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
 
@@ -146,14 +144,14 @@ def on_ui_tabs():
                         img2img_input_dir = gr.Textbox(label='图片输入地址', lines=1,
                                                        placeholder='input folder, default: if exact：exact_img2img_key '
                                                                    'else: crossfade_tmp')
+                        frame_input_dir = gr.Textbox(label='原图地址', lines=1,
+                                                     placeholder='input folder, default: if exact：exact_img2img_key '
+                                                                 'else: frame')
                         btn4 = gr.Button(value="superposition")
                         out4 = gr.Textbox(label="log info", interactive=False, visible=True, placeholder="output log")
-                        if exact_match:
-                            pass
-                        else:
-                            btn4.click(superposition,
-                                       inputs=[project_input, img2img_input_dir],
-                                       outputs=out4)
+                        btn4.click(superposition,
+                                   inputs=[project_input, img2img_input_dir, frame_input_dir, exact_match_cb],
+                                   outputs=out4)
 
                     with gr.TabItem(label='Word Statistics'):
                         folder_input = gr.Textbox(label='Folder Path', lines=1)
@@ -200,6 +198,13 @@ def on_ui_tabs():
                                                      global_replace_checkbox], outputs=replace_output)
 
     return [(pro_interface, "M2M tools", "M2M tools")]
+
+
+def process_inputs(project_input, ebs_cb, width, width_cb, movie_input, smooth_factor, exact_match_cb):
+    if exact_match_cb:
+        return exact_match(project_input, ebs_cb)
+    else:
+        return reconfiguration(project_input, width, width_cb, movie_input, smooth_factor)
 
 
 def process_frequency_to_words(freq_str):

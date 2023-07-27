@@ -11,6 +11,7 @@ from moviepy.editor import concatenate_videoclips, VideoFileClip, AudioFileClip
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
 from functools import partial
+import subprocess
 
 
 def split_frames(project_path, movie_path, aim_fps=None):
@@ -101,13 +102,15 @@ def detach_img(project_path, calcmode):
     return "Done"
 
 
-def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
+def reconfiguration(project_path, width, width_cb, movie_path, smooth_factor=0.9):
     video_frame_folder = os.path.join(project_path, "video_frame")
     video_mask_folder = os.path.join(project_path, "video_mask")
     if not os.path.exists(video_frame_folder):
         os.makedirs(video_frame_folder)
     if not os.path.exists(video_mask_folder):
         os.makedirs(video_mask_folder)
+    if not os.path.exists(os.path.join(project_path, "img2img_key")):
+        os.makedirs(os.path.join(project_path, "img2img_key"))
 
     mask_folder = os.path.join(project_path, "Mask")
     frame_folder = os.path.join(project_path, "frame")
@@ -119,75 +122,66 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
     owidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cap.release()
-    if width > owidth:
-        return "输入的宽度请小于原视频宽度"
-    # The width and height of the box
-    box_width = width
+    box_width = 0
+    if width_cb:
+        if width > owidth:
+            return "输入的宽度请小于原视频宽度"
+        # The width and height of the box
+        if width % 2 != 0:
+            box_width = width + 1
+        else:
+            box_width = width
+    else:
+        width = 0
+        for filename in os.listdir(mask_folder):
+            if filename.endswith('.png'):
+                img = Image.open(os.path.join(mask_folder, filename))
+                white_pixels = np.where(np.array(img))
+                tmp_width = max(white_pixels[1]) - min(white_pixels[1])
+                if tmp_width > width:
+                    width = tmp_width
+        if width % 2 != 0:
+            box_width = width + 1
+        else:
+            box_width = width
     box_height = height
 
     # A dictionary to store the cropping information for each file
     crop_info = {}
     # 在循环外部初始化prev_center为0
-    prev_center = 0
-    # 首次循环，计算所有帧的裁剪位置
-    for filename in tqdm(sorted(os.listdir(mask_folder))):
+    last_center_x = 0
+    for filename in tqdm(sorted(os.listdir(mask_folder)), desc="处理蒙版"):
         if filename.endswith('.png'):
             # 加载图像
-            img = Image.open(f'{mask_folder}/{filename}')
+            img = Image.open(os.path.join(mask_folder, filename))
             img_array = np.array(img)
 
-            person_height = calculate_person_height(img_array)
+        # 计算图像的中心
+        white_pixels = np.where(img_array)
+        center_x = np.mean(white_pixels[1])
+        center_y = np.mean(white_pixels[0])
 
-            # 最大区域的位置
-            max_box_x = 0
+        # 平滑中心位置的变化
+        if last_center_x > 0:
+            center_x = (1 - smooth_factor) * center_x + smooth_factor * last_center_x
+        last_center_x = center_x
+        # 从中心创建指定大小的方框
+        left = int(center_x) - box_width // 2
+        right = int(center_x) + box_width // 2
+        if width % 2 != 0:
+            right = right - 1
+        # 裁切长方形区域
+        img_cropped = img.crop((left, 0, right, box_height))
+        # 保存裁切后的图像
+        img_cropped.save(os.path.join(video_mask_folder, filename))
 
-            # 在这些变量之前定义一个新的标志变量
-            has_encountered_white = False
+        # 记录裁剪信息
+        crop_info[filename] = {
+            'center_coordinates': (int(center_x), int(center_y)),  # 记录平滑后的整型中心坐标
+            'crop_x': int(center_x),
+        }
 
-            for x in range(0, img_array.shape[1] - box_width, step):
-                edge_white_ratio = calculate_continuous_white_ratio_binary(img_array, (x, 0),
-                                                                           (x + box_width, box_height), person_height,
-                                                                           'right')
-                if edge_white_ratio > 0.3:  # 当连续的白色像素占比超过30%时，我们认为已经触及到了人体主体
-                    has_encountered_white = True
-                if has_encountered_white and edge_white_ratio < 0.2:
-                    break
-                max_box_x = x
-            # 在红框停止位置生成绿框
-            max_box_x_2 = max_box_x  # 绿框的左边界
-
-            # 继续移动绿框，直到其左边界的白色像素占比大于20%
-            for x_2 in range(max_box_x + step, img_array.shape[1] - box_width, step):
-                edge_white_ratio_2 = calculate_continuous_white_ratio_binary(img_array, (x_2, 0),
-                                                                             (x_2 + box_width, box_height),
-                                                                             person_height, 'left')
-                if edge_white_ratio_2 > 0.2:  # 更改阈值为20%
-                    break
-                max_box_x_2 = x_2
-
-            # 取红框和绿框的并集，生成新的大框
-            new_center = (max_box_x + max_box_x_2 + box_width) // 2
-            # 使用平滑因子调整黄框的中心
-            if prev_center:  # 判断prev_center是否非0
-                new_center = int(smooth_factor * prev_center + (1 - smooth_factor) * new_center)
-            # 在新的大框中心生成黄框
-            yellow_box_x = new_center - box_width // 2
-            # 确保黄框不会超出图像边界
-            yellow_box_x = max(0, min(img_array.shape[1] - box_width, yellow_box_x))
-
-            # 记录裁剪信息
-            crop_info[filename] = {
-                'crop_x': yellow_box_x,
-                'center_coordinates': (yellow_box_x + box_width // 2, box_height // 2)
-            }
-            # 更新prev_center
-            prev_center = new_center
-
-            # 裁剪图像并保存
-            img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
-            img_cropped.save(f'{video_mask_folder}/{filename}')
-
-    # Save the cropping information as a json file
+    # 保存裁剪信息为json文件
     with open(os.path.join(project_path, 'crop_info.json'), 'w') as f:
         json.dump(crop_info, f)
 
@@ -195,7 +189,11 @@ def reconfiguration(project_path, width, movie_path, step, smooth_factor=0.9):
         filename, crop_info = args
         img = Image.open(f'{frame_folder}/{filename}')
         yellow_box_x = crop_info.get(filename, {}).get('crop_x', 0)
-        img_cropped = img.crop((yellow_box_x, 0, yellow_box_x + box_width, box_height))
+        if width % 2 != 0:
+            img_cropped = img.crop(
+                (yellow_box_x - (box_width // 2), 0, yellow_box_x + (box_width // 2) - 1, box_height))
+        else:
+            img_cropped = img.crop((yellow_box_x - (box_width // 2), 0, yellow_box_x + (box_width // 2), box_height))
         img_cropped.save(f'{video_frame_folder}/{filename}')
 
     # 获取所有图片文件名
@@ -317,6 +315,25 @@ def calculate_white_ratio_binary(img_array, top_left, bottom_right):
     return white_ratio
 
 
+def get_fps(video_file):
+    command = ['ffmpeg', '-i', video_file]
+    proc = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    stdout, stderr = proc.communicate()
+    fps = None
+    stderr = stderr.decode()
+    lines = stderr.split('\n')
+    for line in lines:
+        if 'fps' in line:
+            words = line.split(',')
+            for word in words:
+                if 'fps' in word:
+                    fps = float(word.strip().split(' ')[0])
+                    break
+            if fps is not None:
+                break
+    return fps
+
+
 def frames_to_video(project_path, input_folder, output_file, original_video, fps=None):
     if len(input_folder) == 0:
         input_folder = "video_frame"
@@ -324,51 +341,55 @@ def frames_to_video(project_path, input_folder, output_file, original_video, fps
         output_file = "tmp.mp4"
     input_folder = str(os.path.join(project_path, input_folder))
     output_file = str(os.path.join(project_path, output_file))
+
     image_files = sorted([img for img in os.listdir(input_folder) if img.endswith(".png")])
     if not image_files:
         raise ValueError(f"No PNG images found in the input folder: {input_folder}")
-    frame = cv2.imread(os.path.join(input_folder, image_files[0]))
-    height, width, layers = frame.shape
 
-    # 如果没有提供帧率，则从原始视频中获取
+    # Get fps from original video
     if fps is None:
-        original = VideoFileClip(original_video)
-        fps = original.fps
+        fps = get_fps(original_video)
 
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+    # Creating video from images using ffmpeg
+    command = f"ffmpeg -y -r {fps} -i {input_folder}\\%05d.png -c:v libx264 -vf fps={fps} -pix_fmt yuv420p {output_file}"
+    subprocess.call(command, shell=True)
 
-    for i in tqdm(range(len(image_files)), desc="Processing frames"):
-        video.write(cv2.imread(os.path.join(input_folder, image_files[i])))
+    # Adding audio to the video
+    audio_file = os.path.join(project_path, "tmp_audio.mp3")
+    command = f"ffmpeg -y -i {original_video} -q:a 0 -map a {audio_file}"
+    subprocess.call(command, shell=True)
 
-    cv2.destroyAllWindows()
-    video.release()
-
-    # 如果原始视频有音频，将其添加到新的视频文件
-    if VideoFileClip(original_video).audio:
-        videoclip = VideoFileClip(output_file)
-        audioclip = AudioFileClip(original_video)
-        videoclip = videoclip.set_audio(audioclip)
-        videoclip.write_videofile(output_file, codec='libx264')
-
-    return "Done"
+    final_output = os.path.join(project_path, "final_output.mp4")
+    command = f"ffmpeg -y -i {output_file} -i {audio_file} -shortest {final_output}"
+    subprocess.call(command, shell=True)
 
 
-def superposition(project_path, input_folder):
+def superposition(project_path, input_folder, frame_input_dir, exact):
     if len(input_folder) == 0:
         input_folder = "crossfade_tmp"
-    input_folder = os.path.join(project_path, input_folder)
-    super_folder = os.path.join(project_path, "refactor_frame")
-    frame_dir = os.path.join(project_path, "frame")
-    corp_json = os.path.join(project_path, "crop_info.json")
+        input_folder = os.path.join(project_path, input_folder)
+    if len(frame_input_dir) == 0 and not exact:
+        frame_dir = os.path.join(project_path, "frame")
+    elif len(frame_input_dir) == 0 and exact:
+        frame_dir = os.path.join(project_path, "video_key")
+    else:
+        frame_dir = frame_input_dir
+    if exact:
+        super_folder = os.path.join(project_path, "img2img_key")
+    else:
+        super_folder = os.path.join(project_path, "refactor_frame")
+    if exact:
+        corp_json = os.path.join(project_path, "exact_crop_info.json")
+    else:
+        corp_json = os.path.join(project_path, "crop_info.json")
     if not os.path.exists(super_folder):
         os.makedirs(super_folder)
     if not os.path.exists(input_folder):
-        return "请先使用ebs至少完成第七步"
+        return "请先使用ebs至少完成第七步，或者请填写正确的图片输入地址。"
     if not os.path.exists(frame_dir):
         return "请确认frame文件夹存在"
     if not os.path.exists(corp_json):
-        return "请确认crop_info.json存在"
+        return "请确认记录裁切信息的json文件存在"
     with open(corp_json, 'r') as f:
         crop_info = json.load(f)
     for filename in tqdm(os.listdir(input_folder)):
@@ -380,6 +401,9 @@ def superposition(project_path, input_folder):
             # Get the cropping information
             center_coordinates = crop_info.get(filename, {}).get('center_coordinates', (0, 0))
 
+            # Calculate the position to paste img2 onto img1
+            position = (center_coordinates[0] - img2.width // 2, center_coordinates[1] - img2.height // 2)
+
             # Check if img2 has an alpha channel
             if img2.mode in ('RGBA', 'LA') or (img2.mode == 'P' and 'transparency' in img2.info):
                 # Binary the alpha channel of img2
@@ -388,10 +412,10 @@ def superposition(project_path, input_folder):
                 img2.putalpha(binary_alpha)
 
                 # Paste img2 onto img1 using the binary alpha channel as the mask
-                img1.paste(img2, center_coordinates, img2)
+                img1.paste(img2, position, img2)
             else:
                 # Paste img2 onto img1 without a mask
-                img1.paste(img2, center_coordinates)
+                img1.paste(img2, position)
 
             # Save the result
             img1.save(f'{super_folder}/{filename}')
@@ -450,7 +474,13 @@ def exact_match(project_path, ebs):
     # 遍历蒙版文件夹中的所有文件
     handle_folder = ""
     if ebs:
-        handle_folder = key_folder
+        exact_ime2img_key_mask = os.path.join(project_path, "exact_ime2img_key_mask")
+        if not os.path.exists(exact_ime2img_key_mask):
+            os.makedirs(exact_ime2img_key_mask)
+        for i in os.listdir(key_folder):
+            if not os.path.exists(os.path.join(exact_ime2img_key_mask, i)):
+                shutil.copy(os.path.join(mask_folder, i), os.path.join(exact_ime2img_key_mask, i))
+        handle_folder = exact_ime2img_key_mask
     else:
         handle_folder = mask_folder
     for filename in tqdm(os.listdir(handle_folder), desc="处理蒙版"):
@@ -521,7 +551,10 @@ def exact_match(project_path, ebs):
             frame_cropped.save(os.path.join(exact_frame_folder, filename))
 
             # 记录裁剪信息
-            crop_info[filename] = (center_x, center_y, width, height)
+            crop_info[filename] = {
+                'center_coordinates': (int(center_x), int(center_y)),
+                'crop_x': int(center_x),
+            }
 
     # 保存裁剪信息为json文件
     with open(os.path.join(project_path, 'exact_crop_info.json'), 'w') as f:
